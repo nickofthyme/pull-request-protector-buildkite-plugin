@@ -1,0 +1,48 @@
+name: Pull Request protector
+description: Blocks 3rd-party pull requests based on user and files changed.
+author: https://github.com/nickofthyme
+requirements: [docker]
+configuration:
+  properties:
+    users:
+      # https://github.com/gobwas/glob
+      description: 'A list of allowed usernames.'
+      type: array
+      examples:
+        - [nick, user-*]
+
+    teams:
+      # https://github.com/orgs/elastic/teams/datavis
+      description: 'A list of allowed team slugs under the parent repo organization. Does not support wildcards (i.e. "*")'
+      type: array
+      examples:
+        - [my-team-name]
+
+    member:
+      description: 'Allow members of repo organization (default: false). Requires org read access.'
+      type: boolean
+      default: true
+
+    collaborator:
+      description: 'Allow collaborators of repo organization (default: true).'
+      type: boolean
+      default: true
+
+    files:
+      description: 'A list of files or glob/minimatch patterns to block build for untrusted users.'
+      type: array
+      default: [.buildkite/**]
+      examples:
+        - [.buildkite/**, src/*]
+
+    verified:
+      description: 'If true, accepts only verified commits.'
+      type: boolean
+      default: true
+
+    block_step:
+      description: 'The block step used to block the pipeline.'
+      $ref: "https://raw.githubusercontent.com/buildkite/pipeline-schema/master/schema.json#/definitions/blockStep"
+
+  required: []
+  additionalProperties: false

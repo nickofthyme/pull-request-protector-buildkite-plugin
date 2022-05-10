@@ -1,0 +1,10 @@
+services:
+  lint:
+    image: buildkite/plugin-linter
+    command: ['--id', 'nickofthyme/pull-request-protector']
+    volumes:
+      - ".:/plugin:ro"
+  test-plugin:
+    image: buildkite/plugin-tester
+    volumes:
+      - ".:/plugin:ro"

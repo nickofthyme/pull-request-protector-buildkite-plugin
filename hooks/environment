@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -euo pipefail
+
+if [[ "$(arch)" == "aarch64" ]]; then
+  arch="arm64"
+else
+  arch="amd64"
+fi
+
+plugin=${BUILDKITE_PLUGINS:-""}
+version=$(echo $plugin | sed -e 's/.*pull-request-protector-buildkite-plugin//' -e 's/\".*//')
+repo="https://github.com/chronotc/pull-request-protector-buildkite-plugin"
+executable="pull-request-protector-buildkite-plugin-linux-${arch}"
+
+if [ -z ${version} ]; then
+  url=${repo}/releases/latest/download/${executable}
+else
+  url=${repo}/releases/download/${version:1}/${executable}
+fi
+
+echo ${url}
+
+curl -Lf -o ${executable} $url && chmod +x ${executable}
