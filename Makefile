@@ -1,4 +1,4 @@
-NAME=monorepo-diff-buildkite-plugin
+NAME=pull-request-protector-buildkite-plugin
 RELEASE_VERSION?= "0.0.0"
 ARCH?= "amd64"
 COMMIT=$(shell git rev-parse --short=7 HEAD)

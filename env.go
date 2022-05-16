@@ -3,10 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/google/go-github/v44/github"
 	"github.com/pkg/errors"
@@ -67,19 +68,28 @@ func getArrayValue[V any](arr []V, index int, errMsg string) V {
 	return arr[index]
 }
 
-func checkIfJobIsNeeded() {
+func isCheckRequired() bool {
 	isPr, _ := getEnvString("BUILDKITE_PULL_REQUEST", false)
 
 	if isPr == "false" {
 		// TODO handle this flow
-		fmt.Println("Non-pr build, skipping user checks")
-		os.Exit(0)
+		log.Infoln("Build is not a pull request")
+		return false
 	}
+
+	re := regexp.MustCompile("^(?:git|https)://(.+?)$")
+	baseRepo := re.ReplaceAllString(os.Getenv("BUILDKITE_REPO"), "$1")
+	prRepo := re.ReplaceAllString(os.Getenv("BUILDKITE_PULL_REQUEST_REPO"), "$1")
+
+	if baseRepo == prRepo {
+		log.Infoln("Pull request is not from a fork")
+		return false
+	}
+
+	return true
 }
 
 func getJobEnvironment() *JobEnvironment {
-	checkIfJobIsNeeded()
-
 	repoUrl, _ := getEnvString("BUILDKITE_REPO", true)
 	commitSha, _ := getEnvString("BUILDKITE_COMMIT", true)
 	prNumber, _ := getEnvInt("BUILDKITE_PULL_REQUEST", true)
@@ -92,14 +102,14 @@ func getJobEnvironment() *JobEnvironment {
 
 	ctx := context.Background()
 
-	commit, commitResp, commitErr := githubClient.Repositories.GetCommit(ctx, owner, repo, commitSha, nil)
+	commit, commitResp, commitErr := getGithubClient().Repositories.GetCommit(ctx, owner, repo, commitSha, nil)
 	defer commitResp.Body.Close()
 
 	if commitErr != nil {
 		log.Fatal(errors.Wrap(commitErr, "Failed to get job commit"))
 	}
 
-	files, filesResp, filesErr := githubClient.PullRequests.ListFiles(ctx, owner, repo, int(prNumber), nil)
+	files, filesResp, filesErr := getGithubClient().PullRequests.ListFiles(ctx, owner, repo, int(prNumber), nil)
 	defer filesResp.Body.Close()
 
 	if filesErr != nil {
@@ -115,4 +125,11 @@ func getJobEnvironment() *JobEnvironment {
 	}
 }
 
-var jobEnvironment = getJobEnvironment()
+var jobEnvironment *JobEnvironment
+
+func getJobEnv() *JobEnvironment {
+	if jobEnvironment == nil {
+		jobEnvironment = getJobEnvironment()
+	}
+	return jobEnvironment
+}

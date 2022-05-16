@@ -18,7 +18,7 @@ jobs:
       # TODO add tests
 
       - name: Build binary (linux/arm64)
-        uses: skx/github-action-build@master
+        uses: skx/github-action-build@release-0.6.1
         with:
           builder: .github/build.sh
         env:
@@ -27,7 +27,7 @@ jobs:
           ARCH: arm64
 
       - name: Build binary (linux/amd64)
-        uses: skx/github-action-build@master
+        uses: skx/github-action-build@release-0.6.1
         with:
           builder: .github/build.sh
         env:
@@ -36,7 +36,7 @@ jobs:
           ARCH: amd64
 
       - name: Upload the binaries
-        uses: skx/github-action-publish-binaries@master
+        uses: skx/github-action-publish-binaries@release-2.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

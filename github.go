@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/gobwas/glob"
 	"github.com/google/go-github/v44/github"
-	"github.com/joho/godotenv"
 	"github.com/pkg/errors"
 	"golang.org/x/oauth2"
 )
@@ -22,10 +22,11 @@ type GitHubAuth struct {
 }
 
 func getGithubAuth() *GitHubAuth {
-	authStr, err := getEnvString("GITHUB_AUTH", false)
+	key := *getPlugin().GHAuthKey
+	authStr, err := getEnvString(key, false)
 
 	if err != nil {
-		log.Fatal("GH_TOKEN or GITHUB_AUTH must be provided, found neither")
+		log.Fatalf("Unable to find environment variable for GitHub auth key as %s", key)
 	}
 
 	type GitHubAuthMapping struct {
@@ -33,11 +34,12 @@ func getGithubAuth() *GitHubAuth {
 		InstallationID int64  `json:"installationId"`
 		PrivateKey     string `json:"privateKey"`
 	}
+
 	var auth GitHubAuthMapping
 	err = json.Unmarshal([]byte(authStr), &auth)
 
 	if err != nil {
-		log.Fatal(errors.Wrap(err, "Unable to parse GITHUB_AUTH json, please check json values."))
+		log.Fatal(errors.Wrap(err, "Unable to parse GitHub auth json, please check json values"))
 	}
 
 	PrivateKey := []byte(fmt.Sprintf("%v", auth.PrivateKey))
@@ -49,18 +51,10 @@ func getGithubAuth() *GitHubAuth {
 	}
 }
 
-var githubClient = func() *github.Client {
-	log.SetFlags(0)
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
+func getGithubClientS() *github.Client {
 	tr := http.DefaultTransport
 
-	token, err := getEnvString("GH_TOKEN", false)
-
-	if err != nil {
+	if getPlugin().GHAuthKey != nil {
 		auth := getGithubAuth()
 
 		itr, err := ghinstallation.New(
@@ -70,11 +64,6 @@ var githubClient = func() *github.Client {
 			auth.PrivateKey,
 		)
 
-		// ctx := context.Background()
-		// token, _ := itr.Token(ctx)
-
-		// fmt.Println(token)
-
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -82,8 +71,11 @@ var githubClient = func() *github.Client {
 		return github.NewClient(&http.Client{Transport: itr})
 	}
 
-	if _, err := getEnvString("GITHUB_AUTH", false); err == nil {
-		log.Println("Found both GH_TOKEN and GITHUB_AUTH, using GH_TOKEN")
+	key := getPlugin().GHTokenKey
+	token, err := getEnvString(key, false)
+
+	if err != nil {
+		log.Fatalf("Unable to find environment variable for GitHub token key as %s\n", key)
 	}
 
 	ctx := context.Background()
@@ -93,23 +85,23 @@ var githubClient = func() *github.Client {
 	tc := oauth2.NewClient(ctx, ts)
 
 	return github.NewClient(tc)
-}()
+}
 
 func verifyMembership() bool {
-	username := *jobEnvironment.Commit.Author.Login
-	_, resp, err := githubClient.Organizations.GetOrgMembership(
+	username := *getJobEnv().Commit.Author.Login
+	_, resp, err := getGithubClient().Organizations.GetOrgMembership(
 		context.Background(),
 		username,
-		jobEnvironment.Owner,
+		getJobEnv().Owner,
 	)
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusForbidden {
-		log.Fatal(errors.Wrapf(err, "Provided credentials lack read access to %s organization", jobEnvironment.Owner))
+		log.Fatal(errors.Wrapf(err, "Provided credentials lack read access to %s organization", getJobEnv().Owner))
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		log.Printf("❌ User %s is not a member of %s", username, jobEnvironment.Owner)
+		log.Errorf("❌ User %s is not a member of %s organization", username, getJobEnv().Owner)
 		return false
 	}
 
@@ -117,22 +109,22 @@ func verifyMembership() bool {
 		log.Fatal(err)
 	}
 
-	log.Printf("✅ User %s is member of %s", username, jobEnvironment.Owner)
+	log.Infof("✅ User %s is a member of %s organization", username, getJobEnv().Owner)
 	return true
 }
 
 func verifyCollaborator() bool {
-	username := *jobEnvironment.Commit.Author.Login
-	_, resp, err := githubClient.Repositories.IsCollaborator(
+	username := *getJobEnv().Commit.Author.Login
+	_, resp, err := getGithubClient().Repositories.IsCollaborator(
 		context.Background(),
-		jobEnvironment.Owner,
-		jobEnvironment.Repo,
+		getJobEnv().Owner,
+		getJobEnv().Repo,
 		username,
 	)
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		log.Printf("❌ User %s is not a collaborator of %s", username, jobEnvironment.Repo)
+		log.Errorf("❌ User %s is not a collaborator of the %s repo", username, getJobEnv().Repo)
 		return false
 	}
 
@@ -140,38 +132,45 @@ func verifyCollaborator() bool {
 		log.Fatal(err)
 	}
 
-	log.Printf("✅ User %s is collaborator of %s", username, jobEnvironment.Repo)
+	log.Infof("✅ User %s is a collaborator of the %s repo", username, getJobEnv().Repo)
 	return true
 }
 
-func verifyTeam(teams []string) bool {
+func getVerifiedTeams() []string {
 	ctx := context.Background()
-	username := *jobEnvironment.Commit.Author.Login
+	verifiedTeams := []string{}
+	for _, team := range *getPlugin().Teams {
+		_, resp, err := getGithubClient().Teams.GetTeamBySlug(ctx, getJobEnv().Owner, team)
 
-	for _, team := range teams {
-		_, resp, err := githubClient.Teams.GetTeamBySlug(ctx, jobEnvironment.Owner, team)
-
-		if resp.StatusCode == http.StatusNotFound {
-			log.Printf("Could not find team %s in %s organization", team, jobEnvironment.Owner)
-			return false
-		}
-
-		if err != nil {
-			log.Fatal(err)
+		if resp.StatusCode == http.StatusOK {
+			verifiedTeams = append(verifiedTeams, team)
+		} else if resp.StatusCode == http.StatusNotFound {
+			log.Warnf("Could not find team %s in %s organization, ignoring team", team, getJobEnv().Owner)
+		} else if err != nil {
+			log.Warnf("Error looking up team %s in %s organization, ignoring team", team, getJobEnv().Owner)
+			log.Warn(err)
 		}
 	}
 
+	return verifiedTeams
+}
+
+func verifyTeamMembership() bool {
+	teams := getVerifiedTeams()
+	ctx := context.Background()
+	username := *getJobEnv().Commit.Author.Login
+
 	for _, team := range teams {
-		_, resp, err := githubClient.Teams.GetTeamMembershipBySlug(
+		_, resp, err := getGithubClient().Teams.GetTeamMembershipBySlug(
 			ctx,
-			jobEnvironment.Owner,
+			getJobEnv().Owner,
 			team,
 			username,
 		)
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			log.Printf("✅ User %s is member of team %s", username, team)
+			log.Infof("✅ User %s is a member of the %s team", username, team)
 			return true
 		}
 
@@ -180,34 +179,32 @@ func verifyTeam(teams []string) bool {
 		}
 	}
 
-	log.Printf("❌ User %s is not a member of any provided team", username)
+	log.Errorf("❌ User %s is not a member of any provided team", username)
 	return false
 }
 
-func verifyCommitUser(userPatterns []string) bool {
-	username := *jobEnvironment.Commit.Author.Login
-	for _, pattern := range userPatterns {
-		g := glob.MustCompile(pattern)
-
-		if g.Match(username) {
-			log.Printf("✅ User %s matches pattern %s", username, pattern)
+func verifyCommitUser() bool {
+	username := *getJobEnv().Commit.Author.Login
+	for _, uname := range *getPlugin().Users {
+		if username == uname {
+			log.Infof("✅ User %s is an allowed user", username)
 			return true
 		}
 	}
 
-	log.Printf("❌ User %s does not match any user pattern", username)
+	log.Errorf("❌ User %s is not an allowed user", username)
 	return false
 }
 
 func verifyCommit() bool {
-	verification := *jobEnvironment.Commit.Commit.Verification
+	verification := *getJobEnv().Commit.Commit.Verification
 
 	if verification.Verified == nil || !*verification.Verified {
-		log.Printf("❌ Commit is not verified, reason: %s", *verification.Reason)
+		log.Errorf("❌ Commit is not verified (reason: %s)", *verification.Reason)
 		return false
 	}
 
-	log.Println("✅ Commit is verified")
+	log.Infoln("✅ Commit is verified")
 	return true
 }
 
@@ -220,11 +217,11 @@ func checkTargetFileChanges(filePatterns []string, opts *github.ListOptions) boo
 		}
 	}
 
-	files, resp, err := githubClient.PullRequests.ListFiles(
+	files, resp, err := getGithubClient().PullRequests.ListFiles(
 		ctx,
-		jobEnvironment.Owner,
-		jobEnvironment.Repo,
-		int(jobEnvironment.PRNumber),
+		getJobEnv().Owner,
+		getJobEnv().Repo,
+		int(getJobEnv().PRNumber),
 		opts,
 	)
 	defer resp.Body.Close()
@@ -254,7 +251,16 @@ func checkTargetFileChanges(filePatterns []string, opts *github.ListOptions) boo
 	return checkTargetFileChanges(filePatterns, opts)
 }
 
-func prettyLog(v any) {
-	s, _ := json.MarshalIndent(v, "", "\t")
-	fmt.Print(string(s))
+func prettyJson(v any, label string) {
+	s, _ := json.MarshalIndent(v, "", "    ")
+	log.Debugf("%s:\n%s", label, string(s))
+}
+
+var githubClient *github.Client
+
+func getGithubClient() *github.Client {
+	if githubClient == nil {
+		githubClient = getGithubClientS()
+	}
+	return githubClient
 }

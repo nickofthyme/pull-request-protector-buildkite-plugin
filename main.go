@@ -1,45 +1,81 @@
 package main
 
 import (
-	"log"
 	"os"
-	"strconv"
+
+	"github.com/joho/godotenv"
+	log "github.com/sirupsen/logrus"
 )
 
+func initPlugin() {
+	setupLogger()
+	log.Infoln("Verifing 3rd-party fork pull request")
+
+	prettyJson(getPlugin(), "Plugin config")
+
+	// TODO make this better for release
+	if os.Getenv("CI") != "true" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Fatal(err, "Error loading .env file")
+		}
+	}
+}
+
+func setupLogger() {
+	log.SetFormatter(&log.TextFormatter{
+		DisableTimestamp:       true,
+		DisableLevelTruncation: true,
+		ForceQuote:             true,
+	})
+
+	debugKey := "BUILDKITE_PLUGIN_PULL_REQUEST_PROTECTOR_DEBUG"
+	if os.Getenv(debugKey) == "true" || os.Getenv("CI") != "true" {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+}
+
 func main() {
+	initPlugin()
+
 	valid := true
-	plugin := getPlugin()
+	shouldCheck := isCheckRequired()
 
-	log.Println("--- Verifing 3rd-party fork pull request")
+	if !shouldCheck {
+		commitValid := getPlugin().Verified && verifyCommit()
+		uploadBlockStep(commitValid)
+	}
 
-	hasTargetFileChanges := checkTargetFileChanges(plugin.Files, nil)
+	hasTargetFileChanges := checkTargetFileChanges(getPlugin().Files, nil)
 
 	if !hasTargetFileChanges {
-		log.Println("✅ No files matching any target pattern, skipping checks.")
+		log.Infoln("✅ No files matching any target pattern, skipping checks")
 		os.Exit(1)
 	}
 
-	log.Println("Found files matching one or more target pattern, validating checks.")
+	log.Infoln("Found files matching one or more target pattern, validating checks")
 
-	if plugin.Verified {
+	if valid && getPlugin().Verified {
 		valid = verifyCommit()
 	}
 
-	if plugin.Users != nil {
-		valid = verifyCommitUser(*plugin.Users)
+	if valid && getPlugin().Users != nil {
+		valid = verifyCommitUser()
 	}
 
-	if plugin.Teams != nil {
-		valid = verifyTeam(*plugin.Teams)
+	if valid && getPlugin().Teams != nil {
+		valid = verifyTeamMembership()
 	}
 
-	if plugin.Member {
+	if valid && getPlugin().Member {
 		valid = verifyMembership()
 	}
 
-	if plugin.Collaborator {
+	if valid && getPlugin().Collaborator {
 		valid = verifyCollaborator()
 	}
 
-	os.Setenv("PR_PROTECTOR_BLOCKED", strconv.FormatBool(valid))
+	uploadBlockStep(valid)
 }

@@ -10,8 +10,9 @@ fi
 
 plugin=${BUILDKITE_PLUGINS:-""}
 version=$(echo $plugin | sed -e 's/.*pull-request-protector-buildkite-plugin//' -e 's/\".*//')
-repo="https://github.com/chronotc/pull-request-protector-buildkite-plugin"
+repo="https://github.com/nickofthyme/pull-request-protector-buildkite-plugin"
 executable="pull-request-protector-buildkite-plugin-linux-${arch}"
+test_mode="${PULL_REQUEST_PROTECTOR_BUILDKITE_PLUGIN__TEST:-false}"
 
 if [ -z ${version} ]; then
   url=${repo}/releases/latest/download/${executable}
@@ -19,6 +20,10 @@ else
   url=${repo}/releases/download/${version:1}/${executable}
 fi
 
-echo ${url}
 
-curl -Lf -o ${executable} $url && chmod +x ${executable}
+if [[ "$test_mode" == "false" ]]; then
+  echo ${url}
+  curl -Lf -o ${executable} $url && chmod +x ${executable}
+fi
+
+./${executable}
