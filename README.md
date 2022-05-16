@@ -18,7 +18,7 @@ This plugin gives you the power to protect your builds given any of the followin
 - **Collaborator** - The user must be a collaborator of the base repo.
 - **Verified Commit** - The commit that triggered the build must be [verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/displaying-verification-statuses-for-all-of-your-commits).
 
-This plugin works by defining a command step prior to your buildkite pipeline, be it dynamic or not, that conditionally creates a block step before your pipeline. This block step much be approved by a buildkite user before continuing to run the pipeline. The block step **MUST** be defiend in the buildkite step editing UI to serve as a protected source, defining this plugin in your `.buildkite/` directory will defeat the purpose as it could simply be removed. See example below.
+This plugin works by defining a command step prior to your buildkite pipeline, be it dynamic or not, that conditionally creates a block step before your pipeline. This block step much be approved by a buildkite user before continuing to run the pipeline. The protector/user check step **MUST** be defiend in the buildkite step editing UI to serve as a protected source, defining this plugin in your `.buildkite/` directory will defeat the purpose as it could simply be removed. See example below.
 
 ## Example
 
