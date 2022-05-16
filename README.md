@@ -18,7 +18,7 @@ This plugin gives you the power to protect your builds given any of the followin
 - **Collaborator** - The user must be a collaborator of the base repo.
 - **Verified Commit** - The commit that triggered the build must be [verified](https://docs.github.com/en/authentication/managing-commit-signature-verification/displaying-verification-statuses-for-all-of-your-commits).
 
-This plugin works by defining a command step prior to your buildkite pipeline, be it dynamic or not, that conditionally creates a block step before your pipeline. This block step much be approved by a buildkite user before continuing to run the pipeline. See example below.
+This plugin works by defining a command step prior to your buildkite pipeline, be it dynamic or not, that conditionally creates a block step before your pipeline. This block step much be approved by a buildkite user before continuing to run the pipeline. The block step **MUST** be defiend in the buildkite step editing UI to serve as a protected source, defining this plugin in your `.buildkite/` directory will defeat the purpose as it could simply be removed. See example below.
 
 ## Example
 
@@ -31,7 +31,7 @@ steps:
       # must have a command or step will fail but not required for this plugin
       echo "PR_PROTECTOR_BLOCKED: $$PR_PROTECTOR_BLOCKED" # use to run script based on result of conditions
     plugins:
-      - nickofthyme/pull-request-protector#v0.1.0-alpha.12:
+      - nickofthyme/pull-request-protector#v0.1.0:
           verified: true # requires repo:read access
           collaborator: true # requires repo read access
           member: true # requires org:read access
